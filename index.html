@@ -27,7 +27,7 @@
     padding:8px 6px; touch-action:none; cursor:pointer;
   }
   svg{display:block;width:100%;height:auto}
-  .clef{font-family:'Noto Music',serif;font-size:118px;fill:var(--ink)}
+  .clef{font-family:'Noto Music',serif;font-size:80px;fill:var(--ink)}
   .result{
     margin-top:18px; width:100%; max-width:720px; min-height:150px;
     background:var(--ink); color:#fff; border-radius:22px;
@@ -108,8 +108,26 @@
   }
   el('line',{x1:14,x2:14,y1:yOf(8),y2:yOf(0),stroke:'#2b2433','stroke-width':2});
   el('line',{x1:390,x2:390,y1:yOf(8),y2:yOf(0),stroke:'#2b2433','stroke-width':2});
-  const clef = el('text',{x:22,y:yOf(0)+26,class:'clef'});
+  // Chiave di violino: ricciolo centrato sul 2° rigo (Sol)
+  const clef = el('text',{x:24,y:yOf(0)+18,class:'clef'});
   clef.textContent = '\u{1D11E}';
+  const CLEF_H = 128;            // altezza della chiave (circa 6 spazi e mezzo)
+  function placeClef(){
+    try {
+      const c = document.createElement('canvas').getContext('2d');
+      c.font = '100px "Noto Music"';
+      const m = c.measureText('\u{1D11E}');
+      const asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
+      if (!(asc + desc > 0)) return;
+      const k = CLEF_H / (asc + desc);
+      const top = yOf(2) - 0.625 * CLEF_H;   // il 2° rigo cade a circa 5/8 dell'altezza
+      clef.style.fontSize = (100 * k) + 'px';
+      clef.setAttribute('y', top + asc * k);
+    } catch(e) {}
+  }
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('100px "Noto Music"', '\u{1D11E}').then(placeClef, placeClef);
+  } else placeClef();
 
   // Livelli dinamici
   const bandG = el('g',{});
@@ -244,8 +262,8 @@
           bandG.innerHTML = '';
           seqG.querySelectorAll('g').forEach(n => n.setAttribute('opacity', '1'));
           btn.classList.remove('on');
-        }, 1300));
-      }, k * 1200));
+        }, 1000));
+      }, k * 800));
     });
   }
   bR.onclick = () => runSeq([0,2,4,6,8], bR);
