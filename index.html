@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Pentagramma Sonoro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Music&family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#fdf8ef; --ink:#2b2433; --accent:#e8573c; --soft:#f3e7d3; --blue:#2f6fd6;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'Nunito',system-ui,sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    padding:18px 12px 12px; min-height:100vh;
+    user-select:none; -webkit-user-select:none;
+  }
+  h1{margin:0 0 4px;font-size:clamp(22px,6vw,32px);font-weight:900;letter-spacing:.5px}
+  .sub{margin:0 0 14px;font-size:15px;opacity:.7;text-align:center}
+  .staff-card{
+    width:100%; max-width:720px; background:#fff; border-radius:22px;
+    box-shadow:0 6px 0 var(--soft), 0 10px 30px rgba(0,0,0,.08);
+    padding:8px 6px; touch-action:none; cursor:pointer;
+  }
+  svg{display:block;width:100%;height:auto}
+  .clef{font-family:'Noto Music',serif;font-size:118px;fill:var(--ink)}
+  .result{
+    margin-top:18px; width:100%; max-width:720px; min-height:150px;
+    background:var(--ink); color:#fff; border-radius:22px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:14px;
+  }
+  .name{font-size:clamp(56px,18vw,96px);font-weight:900;line-height:1;transition:transform .15s}
+  .name.pop{transform:scale(1.15)}
+  .detail{margin-top:6px;font-size:17px;opacity:.75}
+  .hint{font-size:20px;opacity:.6;font-weight:600;text-align:center}
+  .opts{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .opts button{
+    font:inherit;font-weight:800;font-size:15px;border:0;border-radius:999px;
+    padding:10px 16px;background:var(--soft);color:var(--ink);cursor:pointer;
+  }
+  .opts button.on{background:var(--blue);color:#fff}
+  footer{margin-top:auto;padding-top:18px;font-size:12px;opacity:.5}
+</style>
+</head>
+<body>
+  <h1>🎵 Pentagramma Sonoro</h1>
+  <p class="sub">Tocca una riga o uno spazio: senti la nota e leggi il suo nome</p>
+
+  <div class="staff-card" id="card">
+    <svg id="staff" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div class="result" id="result">
+    <div class="hint">👆 Tocca il pentagramma</div>
+  </div>
+
+  <div class="opts">
+    <button id="btnNames" class="on">Do Re Mi</button>
+    <button id="btnSound" class="on">Suono: chitarra</button>
+  </div>
+
+  <footer>Copyright © Ignazio Paolicelli</footer>
+
+<script>
+(function(){
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('staff');
+  const resultBox = document.getElementById('result');
+
+  // Geometria: riga inferiore (Mi4) a y=150, passo di 10 per ogni grado
+  const BASE_Y = 150, STEP = 10;
+  const MIN_I = -4, MAX_I = 12;   // da La3 a Do6
+  const X_NOTE = 250;
+  const yOf = i => BASE_Y - i * STEP;
+
+  const IT = ['Do','Re','Mi','Fa','Sol','La','Si'];
+  const EN = ['C','D','E','F','G','A','B'];
+  const SEMI = [0,2,4,5,7,9,11];
+  const COLORS = ['#e8573c','#f29b2e','#e6c229','#4bb366','#2f9fd6','#5865d6','#a35bd1'];
+
+  let useItalian = true, showOct = false, guitar = true;
+
+  function el(tag, attrs, parent){
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    (parent || svg).appendChild(e);
+    return e;
+  }
+
+  // Disegno pentagramma
+  for (let k = 0; k < 5; k++){
+    el('line',{x1:14,x2:390,y1:yOf(k*2),y2:yOf(k*2),stroke:'#2b2433','stroke-width':2});
+  }
+  el('line',{x1:14,x2:14,y1:yOf(8),y2:yOf(0),stroke:'#2b2433','stroke-width':2});
+  el('line',{x1:390,x2:390,y1:yOf(8),y2:yOf(0),stroke:'#2b2433','stroke-width':2});
+  const clef = el('text',{x:22,y:yOf(0)+26,class:'clef'});
+  clef.textContent = '\u{1D11E}';
+
+  // Livelli dinamici
+  const ghostG = el('g',{opacity:.25});
+  const noteG = el('g',{});
+
+  function drawNote(g, i, color){
+    g.innerHTML = '';
+    const y = yOf(i);
+    // tagli addizionali
+    for (let l = -2; l >= i; l -= 2)
+      el('line',{x1:X_NOTE-22,x2:X_NOTE+22,y1:yOf(l),y2:yOf(l),stroke:'#2b2433','stroke-width':2},g);
+    for (let l = 10; l <= i; l += 2)
+      el('line',{x1:X_NOTE-22,x2:X_NOTE+22,y1:yOf(l),y2:yOf(l),stroke:'#2b2433','stroke-width':2},g);
+    // gambo
+    const up = i < 4;
+    if (up) el('line',{x1:X_NOTE+10.5,x2:X_NOTE+10.5,y1:y-2,y2:y-62,stroke:color,'stroke-width':2.6},g);
+    else    el('line',{x1:X_NOTE-10.5,x2:X_NOTE-10.5,y1:y+2,y2:y+62,stroke:color,'stroke-width':2.6},g);
+    // testa
+    el('ellipse',{cx:X_NOTE,cy:y,rx:12,ry:8.6,fill:color,transform:`rotate(-22 ${X_NOTE} ${y})`},g);
+  }
+
+  function noteInfo(i){
+    const abs = 4*7 + 2 + i;           // Mi4 = indice 0
+    const letter = ((abs % 7) + 7) % 7;
+    const octave = Math.floor(abs / 7);
+    const midi = 12*(octave+1) + SEMI[letter];
+    return {letter, octave, midi, freq: 440 * Math.pow(2,(midi-69)/12)};
+  }
+
+  // ---------- Audio ----------
+  let ctx = null;
+  function getCtx(){
+    if (!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC();
+    }
+    if (ctx.state === 'suspended') ctx.resume().catch(()=>{});
+    return ctx;
+  }
+  function playGuitar(freq){
+    const c = getCtx(); if (!c) return;
+    const sr = c.sampleRate, dur = 2.2, len = Math.floor(sr*dur);
+    const buf = c.createBuffer(1, len, sr), d = buf.getChannelData(0);
+    const N = Math.max(2, Math.round(sr / freq));
+    const ring = new Float32Array(N);
+    for (let k = 0; k < N; k++) ring[k] = Math.random()*2 - 1;
+    let p = 0;
+    for (let k = 0; k < len; k++){
+      const nx = (p + 1) % N;
+      const v = ring[p];
+      ring[p] = 0.996 * 0.5 * (ring[p] + ring[nx]);
+      d[k] = v * 0.5;
+      p = nx;
+    }
+    const src = c.createBufferSource(); src.buffer = buf;
+    const g = c.createGain(); g.gain.value = 0.9;
+    src.connect(g).connect(c.destination); src.start();
+  }
+  function playPiano(freq){
+    const c = getCtx(); if (!c) return;
+    const t = c.currentTime;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(0.35,t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+1.6);
+    g.connect(c.destination);
+    [[1,1],[2,0.35],[3,0.12]].forEach(([m,a])=>{
+      const o = c.createOscillator(), og = c.createGain();
+      o.type = 'triangle'; o.frequency.value = freq*m; og.gain.value = a;
+      o.connect(og).connect(g); o.start(t); o.stop(t+1.7);
+    });
+  }
+
+  // ---------- Interazione ----------
+  let lastI = null;
+  function iFromEvent(e){
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    let i = Math.round((BASE_Y - p.y) / STEP);
+    return Math.max(MIN_I, Math.min(MAX_I, i));
+  }
+
+  function show(i){
+    const n = noteInfo(i);
+    const color = COLORS[n.letter];
+    drawNote(noteG, i, color);
+    const nm = (useItalian ? IT : EN)[n.letter] + (showOct ? n.octave : '');
+    const where = (i % 2 === 0) ? 'sulla riga' : 'nello spazio';
+    let pos;
+    if (i < 0 || i > 8) pos = 'con taglio addizionale';
+    else if (i % 2 === 0) pos = `${i/2+1}ª riga`;
+    else pos = `${(i+1)/2}° spazio`;
+    if (i === -1) pos = 'sotto la 1ª riga';
+    if (i === 9) pos = 'sopra la 5ª riga';
+    resultBox.innerHTML =
+      `<div class="name" id="nm" style="color:${color}">${nm}</div>
+       <div class="detail">${pos} · ${useItalian ? EN[n.letter] : IT[n.letter]}</div>`;
+    const nmEl = document.getElementById('nm');
+    requestAnimationFrame(()=>{ nmEl.classList.add('pop'); setTimeout(()=>nmEl.classList.remove('pop'),150); });
+    (guitar ? playGuitar : playPiano)(n.freq);
+    lastI = i;
+  }
+
+  svg.addEventListener('pointerdown', e => { e.preventDefault(); show(iFromEvent(e)); });
+  svg.addEventListener('pointermove', e => {
+    if (e.pointerType === 'mouse') drawNote(ghostG, iFromEvent(e), '#2b2433');
+  });
+  svg.addEventListener('pointerleave', () => { ghostG.innerHTML = ''; });
+
+  // ---------- Opzioni ----------
+  const bN = document.getElementById('btnNames');
+  const bS = document.getElementById('btnSound');
+  bN.onclick = () => { useItalian = !useItalian; bN.textContent = useItalian ? 'Do Re Mi' : 'C D E'; if (lastI!==null) show(lastI); };
+  bS.onclick = () => { guitar = !guitar; bS.textContent = guitar ? 'Suono: chitarra' : 'Suono: pianoforte'; if (lastI!==null) show(lastI); };
+})();
+</script>
+</body>
+</html>
